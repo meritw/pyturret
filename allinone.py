@@ -19,6 +19,7 @@ from picamera2.devices.imx500.postprocess_highernet import \
 
 from streamer import StreamingOutput, start_streaming_server
 from HWServo import HWServo
+from streamer import armed_state
 
 last_boxes = None
 last_scores = None
@@ -47,13 +48,12 @@ data_queue = queue.Queue()
 
 last_aim_timestamp = None
 def aim(aimPointX, aimPointY, fire):
-    # Only update aim every 1 second
     global last_aim_timestamp
     global data_queue
     if not fire and last_aim_timestamp is not None and time.time() - last_aim_timestamp < 0.2:
         return
     last_aim_timestamp = time.time()
-    data_queue.put((aimPointX, aimPointY, fire))
+    data_queue.put((aimPointX, aimPointY, fire and armed_state))
 
 def aim_turret_thread():
     global data_queue

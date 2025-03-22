@@ -22,10 +22,13 @@ PAGE = """\
 <body>
 <h1>Turret View</h1>
 <img src="stream.mjpg" />
+<button id="armDisarmButton">Disarm</button>
+<script src="script.js"></script>
 </body>
 </html>
 """
 
+armed_state = False
 
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
@@ -44,6 +47,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
+        global armed_state
         if self.path == '/':
             self.send_response(301)
             self.send_header('Location', '/index.html')
@@ -77,6 +81,12 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                 logging.warning(
                     'Removed streaming client %s: %s',
                     self.client_address, str(e))
+        elif self.path.startswith('/set_armed'):
+            query = self.path.split('?')[1]
+            params = dict(qc.split('=') for qc in query.split('&'))
+            armed_state = params.get('armed', 'false').lower() == 'true'
+            self.send_response(200)
+            self.end_headers()
         else:
             self.send_error(404)
             self.end_headers()
