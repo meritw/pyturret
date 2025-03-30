@@ -9,6 +9,8 @@ import logging
 import socketserver
 from http import server
 from threading import Condition
+from http.server import SimpleHTTPRequestHandler
+import os
 
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
@@ -28,7 +30,9 @@ PAGE = """\
 </html>
 """
 
+# Turret State
 armed_state = False
+mode = 'search'
 
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
@@ -41,10 +45,10 @@ class StreamingOutput(io.BufferedIOBase):
             self.condition.notify_all()
 
 
-class StreamingHandler(server.BaseHTTPRequestHandler):
+class StreamingHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self.output = kwargs.pop('output', None)
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, directory='static', **kwargs)
 
     def do_GET(self):
         global armed_state
@@ -88,8 +92,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
         else:
-            self.send_error(404)
-            self.end_headers()
+            super().do_GET()
 
 
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):

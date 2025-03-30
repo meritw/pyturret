@@ -3,6 +3,7 @@ import sys
 import time
 import threading
 import queue
+import random
 from time import sleep
 
 import cv2
@@ -17,9 +18,9 @@ from picamera2.devices.imx500.postprocess import COCODrawer, PARTS
 from picamera2.devices.imx500.postprocess_highernet import \
     postprocess_higherhrnet
 
-from streamer import StreamingOutput, start_streaming_server
+import streamer
+#from streamer import StreamingOutput, start_streaming_server, armed_state
 from HWServo import HWServo
-from streamer import armed_state
 
 last_boxes = None
 last_scores = None
@@ -53,32 +54,73 @@ def aim(aimPointX, aimPointY, fire):
     if not fire and last_aim_timestamp is not None and time.time() - last_aim_timestamp < 0.2:
         return
     last_aim_timestamp = time.time()
-    data_queue.put((aimPointX, aimPointY, fire and armed_state))
+    data_queue.put((aimPointX, aimPointY, fire and streamer.armed_state))
 
+search_point = 0
+search_count = 0
+search_coords = [
+    (-45, -90),
+    (-45, -45),
+    (-45, 0),
+    (-45, 45),
+    (-45, 90),
+    (-20, 90),
+    (-20, 45),
+    (-20, 0),
+    (-20, -45),
+    (-20, -90),
+    (0, -90),
+    (0, -45),
+    (0, 0),
+    (0, 45),
+    (0, 90),
+    (20, 90),
+    (20, 45),
+    (20, 0),
+    (20, -45),
+    (20, -90),
+    (45, -90),
+    (45, -45),
+    (45, 0),
+    (45, 45),
+    (45, 90)
+]
 def aim_turret_thread():
     global data_queue
+    global search_point
+    global search_count
     while True:
         aimPointX, aimPointY, fire = data_queue.get()
         if aimPointX is None and aimPointY is None:
             break
+        
         if aimPointX == -1 and aimPointY == -1:
-            continue
-        print(aimPointX, aimPointY, fire)
+            search = True
+            search_count += 1
+            if search_count > 3:
+                search_count = 0
+                yawServo.set_angle(search_coords[search_point][1])
+                pitchServo.set_angle(search_coords[search_point][0])
+                search_point += 1
+                if search_point >= len(search_coords):
+                    search_point = 0
+        else:
+            print(aimPointX, aimPointY, fire)
+            # Calculate the proportional adjustment for yaw
+            if aimPointX < 315 or aimPointX > 325:
+                yaw_adjustment = (aimPointX - 320) / 320 * 45
+                yawServo.adjust_angle(yaw_adjustment)
 
-        # Calculate the proportional adjustment for yaw
-        if aimPointX < 315 or aimPointX > 325:
-            yaw_adjustment = (aimPointX - 320) / 320 * 45
-            yawServo.adjust_angle(yaw_adjustment)
+            # Calculate the proportional adjustment for pitch
+            if aimPointY < 235 or aimPointY > 245:
+                pitch_adjustment = (240 - aimPointY) / 240 * 45
+                pitchServo.adjust_angle(pitch_adjustment)
 
-        # Calculate the proportional adjustment for pitch
-        if aimPointY < 235 or aimPointY > 245:
-            pitch_adjustment = (240 - aimPointY) / 240 * 45
-            pitchServo.adjust_angle(pitch_adjustment)
-
-        if fire:
-            fireServo.max()
-            sleep(0.22)
+            if fire:
+                fireServo.max()
+                sleep(0.22)
             fireServo.mid()
+        
 
 
 def ai_output_tensor_parse(metadata: dict):
@@ -131,17 +173,22 @@ def picamera2_pre_callback(request: CompletedRequest):
         if target > len(keypoints):
             target = 0
         target_keypoints = keypoints[target]
-        if target_keypoints[LEFT_SHOULDER][2] > 0.3 and target_keypoints[RIGHT_SHOULDER][2] > 0.3:
+        if target_keypoints[LEFT_SHOULDER][2] > 0.1 and target_keypoints[RIGHT_SHOULDER][2] > 0.1:
             aimPointX = int((target_keypoints[LEFT_SHOULDER][0] + target_keypoints[RIGHT_SHOULDER][0]) / 2)
             aimPointY = int((target_keypoints[LEFT_SHOULDER][1] + target_keypoints[RIGHT_SHOULDER][1]) / 2)
-    fire = update_state(target, aimPointX, aimPointY)
+    fire, aimPointX, aimPointY = update_state(target, aimPointX, aimPointY)
     draw(request, boxes, scores, keypoints, aimPointX, aimPointY, fire)
     aim(aimPointX, aimPointY, fire)
 
 locked_time = None
+search_aim_point = [320, 240]
+search_direction_x = 1
+search_direction_1 = 1
 def update_state(target, aimPointX, aimPointY):
     global locked_time
+    global search_aim_point
     fire = False
+    search = False
     locked = (aimPointX > 315 and aimPointX < 325) and (aimPointY > 235 and aimPointY < 245)
     if locked:
         if locked_time is None:
@@ -149,7 +196,8 @@ def update_state(target, aimPointX, aimPointY):
         elif time.time() - locked_time > 1.5:
             fire = True
             locked_time = None
-    return fire
+            target += 1
+    return fire, aimPointX, aimPointY
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -218,19 +266,17 @@ if __name__ == "__main__":
     #output = StreamingOutput()
     #picam2.start_recording(JpegEncoder(), FileOutput(output))
 
-
-
     init_servos()
 
     # Start the aim_turret thread
     turret_thread = threading.Thread(target=aim_turret_thread)
     turret_thread.start()
 
-    output = StreamingOutput()
+    output = streamer.StreamingOutput()
     picam2.start_recording(JpegEncoder(), FileOutput(output))
 
     try:
-        start_streaming_server(output)
+        streamer.start_streaming_server(output)
         # while True:
         #     sleep(1)
     except KeyboardInterrupt:
