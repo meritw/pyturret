@@ -5,7 +5,7 @@ This is a python app to turn a [HackPack Turret](https://www.crunchlabs.com/prod
 This runs on a Raspberry pi and uses the [AI Camera](https://www.raspberrypi.com/products/ai-camera/) to search for, track and fire at human-shaped targets.  It can track multiple targets and fire on them in sequence (sometimes).
 
 The python application hosts a simple web page with a video stream of what the turret is seeing, overlayed with target information and basic info about the turret's state.  Simple controls are available on the web page to arm and disarm the turret (others, like manual control, could be added).
-(images/screenshot.jpg)
+[screenshot of the web interface](images/screenshot.jpg)
 
 Most of the heavy lifting is done by the AI Processor on the IMX500, so the CPU load on the pi ends up being quite small.
 
@@ -14,8 +14,8 @@ You can use the Raspberry PI's built-in hardware PWN to control the servos or pi
 
 I just removed the stock Arduino and plastic holder-thingy and stuck the pi down with some double-sided foam tape.  The camera is attached to the front of the turret with a rubber band and the ribbon cable is threaded under the main body to the pi.
 
-(images/setup.jpg)
-(images/camera.jpg)
+[picture of the raspberry pi taped to the turret](images/setup.jpg)
+[picture of the camera](images/camera.jpg)
 
 
 ## Software:
