@@ -2,6 +2,14 @@ import time
 import os
 import RPi.GPIO as GPIO
 
+"""
+This class provides a simple interface to control a servo motor using hardware PWM on a Raspberry Pi.
+It uses the sysfs interface to control the PWM pins directly.
+The class allows you to set the angle of the servo, adjust the angle incrementally,
+and move the servo to predefined positions (min, mid, max).
+This was mostly written by Copilot so use at your own risk.
+"""
+
 class HWServo:
     def __init__(self, pwm_chip=0, pwm_channel=0, min_duty=1000000, max_duty=2000000, frequency=50):
         """
@@ -87,6 +95,10 @@ class HWServo:
         self.disable()
         with open(f"/sys/class/pwm/pwmchip{self.pwm_chip}/unexport", 'w') as f:
             f.write(str(self.pwm_channel))
+
+    def get_angle(self):
+        """ Returns the current angle of the servo. """
+        return self.current_angle
 
 # Example usage
 if __name__ == "__main__":

@@ -98,12 +98,23 @@ class StreamingHandler(SimpleHTTPRequestHandler):
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
-
+    
+server = None
 def start_streaming_server(output, address=('', 8000)):
+    global server
     server = StreamingServer(address, lambda *args, **kwargs: StreamingHandler(*args, output=output, **kwargs))
     print(f"Starting server at {server.server_address}")
     server.serve_forever()
-
+def stop_streaming_server():
+    global server
+    if server:
+        server.shutdown()
+        server.server_close()
+        server = None
+        print("Server stopped.")
+    else:
+        print("No server to stop.")
+        
 if __name__ == "__main__":
     with Picamera2() as picam2:
         picam2.configure(picam2.create_video_configuration())
