@@ -4,3 +4,4 @@ picamera2
 simplejpeg
 RPi.GPIO
 smbus
+simple_pid

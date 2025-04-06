@@ -84,10 +84,20 @@ def draw(request: CompletedRequest, stream='main'):
             cv2.line(m.array, (aimPointX, 0), (aimPointX, WINDOW_SIZE_H_W[0]), (0, 255, 0), 1)
             cv2.line(m.array, (0, aimPointY), (WINDOW_SIZE_H_W[1], aimPointY), (0, 255, 0), 1)
             # Target square
-            cv2.rectangle(m.array, (305, 225), (325, 245), (0, 255, 0), 1)
+            color = (255, 0, 0) if turret.state == TurretState.FIRING  \
+               else (0, 0, 255) if turret.state == TurretState.LOCKED  \
+               else (0, 255, 0)
+            cv2.rectangle(m.array, (320 - turret.AIM_WINDOW_SIZE, 240 - turret.AIM_WINDOW_SIZE), \
+                                   (320 + turret.AIM_WINDOW_SIZE, 240 + turret.AIM_WINDOW_SIZE), \
+                                   color,  1)
 
         # Draw the turret mode on the image
         cv2.putText(m.array, f"{turret.state.name}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        # Put arm/disarm text
+        if turret.armed:
+            cv2.putText(m.array, "ARMED", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        else:   
+            cv2.putText(m.array, "DISARMED", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
 
 def get_args():
@@ -167,7 +177,7 @@ def main():
 
     try:
         while True:
-            turret.update(keypoints, boxes, scores)
+            turret.update(keypoints, boxes, scores, streamer.armed_state)
             sleep(0.25)
     except KeyboardInterrupt:
         streamer.stop_streaming_server()

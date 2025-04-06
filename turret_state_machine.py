@@ -3,6 +3,7 @@ from enum import Enum, auto
 from threading import Thread
 from time import sleep
 import numpy as np
+from simple_pid import PID  # Import the PID library
 
 class TurretState(Enum):
     SEARCHING = auto()
@@ -11,6 +12,7 @@ class TurretState(Enum):
     FIRING = auto()
 
 class TurretStateMachine:
+    AIM_WINDOW_SIZE = 50
     DEFAULT_SEARCH_COORDS = [
         (-45, -90), (-45, -45), (-45, 0), (-45, 45), (-45, 90),
         (-20, 90), (-20, 45), (-20, 0), (-20, -45), (-20, -90),
@@ -31,16 +33,26 @@ class TurretStateMachine:
         self.aim_point = (-1, -1)
         self.fire = False
         self.target = 0
+        self.armed = False
+        self.yaw_pid = PID(0.1, 0.01, 0.05, setpoint=320)  # PID for yaw (center X = 320)
+        self.pitch_pid = PID(0.1, 0.01, 0.05, setpoint=240)  # PID for pitch (center Y = 240)
+        self.yaw_pid.output_limits = (-20, 20)  # Limit yaw adjustments
+        self.pitch_pid.output_limits = (-20, 20)  # Limit pitch adjustments
 
     def set_state(self, new_state):
         print(f"Transitioning to state: {new_state}")
         self.state = new_state
 
-    def update(self, keypoints, boxes, scores):
+    def update(self, keypoints, boxes, scores, armed_state):
         self.keypoints = keypoints
         self.boxes = boxes
         self.scores = scores
+        self.armed = armed_state
         self.target_found = scores is not None and np.any(scores > 0.1)
+        if self.target_found:
+            self.update_aimpoint()
+        else:
+            self.aim_point = (-1, -1)
         state_handlers = {
             TurretState.SEARCHING: self.search,
             TurretState.TRACKING: self.track,
@@ -63,46 +75,57 @@ class TurretStateMachine:
             self.yaw_servo.adjust_angle(self.searchDeltaX)
 
             self.pitch_servo.set_angle(15)
-            # if(self.pitch_servo.get_angle() + self.searchDeltaY > 90 or
-            #    self.pitch_servo.get_angle() + self.searchDeltaY < -90):
-            #     self.searchDeltaY = -self.searchDeltaY
-            # self.pitch_servo.adjust_angle(self.searchDeltaY)
 
     def track(self):
         if not self.target_found:
-            print("Target lost")
             self.set_state(TurretState.SEARCHING)
             return
-        
-        self.update_aimpoint()
-        aim_x, aim_y = self.aim_point
-        yaw_adjustment = (aim_x - 320) / 320 * 20
-        pitch_adjustment = (240 - aim_y) / 240 * 20
-        self.yaw_servo.adjust_angle(yaw_adjustment)
-        self.pitch_servo.adjust_angle(pitch_adjustment)
+
+        self.aim()
 
         if self.is_locked():
             self.set_state(TurretState.LOCKED)
 
     def lock(self):
+        if not self.is_locked():
+            if self.target_found:
+                self.set_state(TurretState.TRACKING)
+            else:
+                self.aim_point = (-1, -1)
+                self.set_state(TurretState.SEARCHING)
+            return
+        
+        self.aim()
+        
         if self.locked_time is None:
             self.locked_time = time.time()
-        elif time.time() - self.locked_time > 1.5:
+        elif time.time() - self.locked_time > 1.5 and self.armed:
             self.set_state(TurretState.FIRING)
-
         if not self.target_found:
             self.set_state(TurretState.SEARCHING)
 
     def fire_turret(self):
-        self.fire_servo.max()
-        sleep(0.22)
-        self.fire_servo.mid()
-        self.target = self.target + 1
-        self.set_state(TurretState.SEARCHING)
+        if self.armed:
+            self.fire_servo.max()
+            sleep(0.22)
+            self.fire_servo.mid()
+            self.target = self.target + 1
+            self.set_state(TurretState.SEARCHING)
 
     def is_locked(self):
         aim_x, aim_y = self.aim_point
-        return 310 < aim_x < 320 and 230 < aim_y < 240
+        return ((640/2)-self.AIM_WINDOW_SIZE) < aim_x < ((640/2)+self.AIM_WINDOW_SIZE) and \
+               ((480/2)-self.AIM_WINDOW_SIZE) < aim_y < ((480/2)+self.AIM_WINDOW_SIZE)
+
+    def aim(self):
+        aim_x, aim_y = self.aim_point
+        # Use PID controllers to calculate adjustments
+        yaw_adjustment = self.yaw_pid(aim_x)
+        pitch_adjustment = self.pitch_pid(aim_y)
+        print(yaw_adjustment * -1, pitch_adjustment)
+        # Apply adjustments to servos
+        self.yaw_servo.adjust_angle(yaw_adjustment * -1)
+        self.pitch_servo.adjust_angle(pitch_adjustment)
 
     def update_aimpoint(self):
         # use keypoints to identify target aim point between the shoulders
@@ -131,4 +154,3 @@ class TurretStateMachine:
         else:
             self.aim_point = (-1, -1)
 
-        

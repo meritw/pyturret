@@ -11,6 +11,7 @@ from http import server
 from threading import Condition
 from http.server import SimpleHTTPRequestHandler
 import os
+from urllib.parse import urlparse, parse_qs  # Add this import
 
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
@@ -24,7 +25,7 @@ PAGE = """\
 <body>
 <h1>Turret View</h1>
 <img src="stream.mjpg" />
-<button id="armDisarmButton">Disarm</button>
+<button id="armDisarmButton">Arm</button>
 <script src="script.js"></script>
 </body>
 </html>
@@ -52,18 +53,22 @@ class StreamingHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         global armed_state
-        if self.path == '/':
+        parsed_url = urlparse(self.path)  # Parse the URL
+        path = parsed_url.path  # Extract the path
+        query_params = parse_qs(parsed_url.query)  # Extract query parameters as a dictionary
+
+        if path == '/':
             self.send_response(301)
             self.send_header('Location', '/index.html')
             self.end_headers()
-        elif self.path == '/index.html':
+        elif path == '/index.html':
             content = PAGE.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.send_header('Content-Length', len(content))
             self.end_headers()
             self.wfile.write(content)
-        elif self.path == '/stream.mjpg':
+        elif path == '/stream.mjpg':
             self.send_response(200)
             self.send_header('Age', 0)
             self.send_header('Cache-Control', 'no-cache, private')
@@ -85,10 +90,8 @@ class StreamingHandler(SimpleHTTPRequestHandler):
                 logging.warning(
                     'Removed streaming client %s: %s',
                     self.client_address, str(e))
-        elif self.path.startswith('/set_armed'):
-            query = self.path.split('?')[1]
-            params = dict(qc.split('=') for qc in query.split('&'))
-            armed_state = params.get('armed', 'false').lower() == 'true'
+        elif path == '/set_armed':
+            armed_state = query_params.get('armed', ['false'])[0].lower() == 'true'
             self.send_response(200)
             self.end_headers()
         else:
